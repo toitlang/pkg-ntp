@@ -3,25 +3,29 @@
 import binary show BIG_ENDIAN
 import net
 
-NTP_SERVER_HOSTNAME_   ::= "pool.ntp.org"
-NTP_SERVER_PORT_       ::= 123
-NTP_MAX_ROUND_TRIP_    ::= Duration --s=2
+NTP_DEFAULT_SERVER_HOSTNAME /string   ::= "pool.ntp.org"
+NTP_DEFAULT_SERVER_PORT     /int      ::= 123
+NTP_DEFAULT_MAX_RTT         /Duration ::= Duration --s=2
 
 class Result:
   adjustment/Duration ::= ?
   accuracy/Duration ::= ?
   constructor .adjustment .accuracy:
 
-synchronize -> Result?:
-  outgoing ::= Packet.outgoing
-  network ::= net.open
-  socket := network.udp_open
+synchronize -> Result?
+    --network/net.Interface?=null
+    --server/string=NTP_DEFAULT_SERVER_HOSTNAME
+    --port/int=NTP_DEFAULT_SERVER_PORT
+    --max_rtt/Duration=NTP_DEFAULT_MAX_RTT:
+  outgoing ::= Packet_.outgoing
+  effective_network := network ? network : net.open
+  socket := effective_network.udp_open
   try:
-    ips := network.resolve NTP_SERVER_HOSTNAME_
+    ips := effective_network.resolve server
     socket.connect
       net.SocketAddress
         ips[0]
-        NTP_SERVER_PORT_
+        port
 
     marker ::= (random << 32) | random
     outgoing.marker = marker
@@ -29,13 +33,13 @@ synchronize -> Result?:
     transmit ::= Time.monotonic_us
     socket.write outgoing.bytes
 
-    catch: with_timeout NTP_MAX_ROUND_TRIP_:
+    catch: with_timeout max_rtt:
       data ::= socket.read
       received ::= Time.monotonic_us
       now ::= Time.now
 
       round_trip ::= Duration --us=(received - transmit)
-      incoming ::= Packet.incoming data
+      incoming ::= Packet_.incoming data
       t1 ::= now - round_trip  // Validated through the marker.
       t2 ::= incoming.receive_timestamp
       t3 ::= incoming.transmit_timestamp
@@ -43,7 +47,7 @@ synchronize -> Result?:
 
       // Drop invalid or too delayed packets.
       if incoming.marker != marker or incoming.version != VERSION_ or incoming.mode != MODE_SERVER_ or
-          round_trip > NTP_MAX_ROUND_TRIP_ or t2 > t3:
+          round_trip > max_rtt or t2 > t3:
         return null
 
       // If we've received a Kiss-o'-Death packet, we can't use the result.
@@ -59,6 +63,7 @@ synchronize -> Result?:
 
   finally:
     socket.close
+    if effective_network != network: effective_network.close
   return null
 
 // --------------------------------------------------------------------------------------------------------
@@ -73,23 +78,23 @@ VERSION_                   ::= 4
 MODE_CLIENT_               ::= 3
 MODE_SERVER_               ::= 4
 
-class Packet:
+class Packet_:
   bytes/ByteArray ::= ?
 
   constructor.outgoing:
-    bytes = ByteArray DATAGRAM_SIZE_
-    bytes[0] = (LEAP_INDICATOR_NO_WARNING_ << LEAP_INDICATOR_SHIFT_) | (VERSION_ << VERSION_SHIFT_) | MODE_CLIENT_
+    bytes = ByteArray DATAGRAM_SIZE
+    bytes[0] = (LEAP_INDICATOR_NO_WARNING_ << LEAP_INDICATOR_SHIFT) | (VERSION_ << VERSION_SHIFT) | MODE_CLIENT_
 
   constructor.incoming .bytes:
 
   // Code warning of impending leap-second to be inserted at the end of the last day of the current month.
-  leap_indicator -> int: return (bytes[0] & LEAP_INDICATOR_MASK_) >> LEAP_INDICATOR_SHIFT_
+  leap_indicator -> int: return (bytes[0] & LEAP_INDICATOR_MASK) >> LEAP_INDICATOR_SHIFT
 
   // 3-bit integer representing the NTP version number, currently 4
-  version -> int: return (bytes[0] & VERSION_MASK_) >> VERSION_SHIFT_
+  version -> int: return (bytes[0] & VERSION_MASK) >> VERSION_SHIFT
 
   // 3-bit integer representing the mode.
-  mode -> int: return (bytes[0] & MODE_MASK_)
+  mode -> int: return (bytes[0] & MODE_MASK)
 
   // 8-bit integer representing the stratum. If it is zero, the packet is a Kiss-o'-Death
   // packet that must be discarded.
@@ -109,16 +114,16 @@ class Packet:
 
   // Helper functions for getting and settings timestamps.
   get_timestamp_ offset/int -> Time:
-    seconds ::= (BIG_ENDIAN.uint32 bytes offset) - TIME_SECONDS_ADJUSTMENT_
+    seconds ::= (BIG_ENDIAN.uint32 bytes offset) - TIME_SECONDS_ADJUSTMENT
     ns ::= (BIG_ENDIAN.uint32 bytes offset + 4) * Duration.NANOSECONDS_PER_SECOND / (1 << 32)
     return Time.epoch --s=seconds --ns=ns
 
   // Private parts.
-  static DATAGRAM_SIZE_           ::= 4 * 4 + 4 * 8
-  static LEAP_INDICATOR_MASK_     ::= 0b11000000
-  static VERSION_MASK_            ::= 0b00111000
-  static MODE_MASK_               ::= 0b00000111
-  static LEAP_INDICATOR_SHIFT_    ::= 6
-  static VERSION_SHIFT_           ::= 3
+  static DATAGRAM_SIZE           ::= 4 * 4 + 4 * 8
+  static LEAP_INDICATOR_MASK     ::= 0b11000000
+  static VERSION_MASK            ::= 0b00111000
+  static MODE_MASK               ::= 0b00000111
+  static LEAP_INDICATOR_SHIFT    ::= 6
+  static VERSION_SHIFT           ::= 3
 
-  static TIME_SECONDS_ADJUSTMENT_ ::= 2_208_988_800  // Seconds from 1900 to 1970.
+  static TIME_SECONDS_ADJUSTMENT ::= 2_208_988_800  // Seconds from 1900 to 1970.
