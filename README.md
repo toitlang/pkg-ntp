@@ -1,4 +1,4 @@
-# Ntp 
+# NTP
 
 NTP (Network Time Protocol) client.
 
