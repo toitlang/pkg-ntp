@@ -7,16 +7,15 @@
 // and sets the system time.
 
 import ntp
-import esp32 show set_real_time_clock
+import esp32 show adjust_real_time_clock
 
 main:
   now := Time.now
-  if now < (Time.from_string "2022-01-07T00:00:00Z"):
+  if now < (Time.from_string "2022-01-10T00:00:00Z"):
     result ::= ntp.synchronize
     if result:
-      new_now := Time.now + result.adjustment
-      set_real_time_clock new_now
-      print "Set time to $Time.now"
+      adjust_real_time_clock result.adjustment
+      print "Set time to $Time.now by adjusting $result.adjustment"
     else:
       print "ntp: synchronization request failed"
   else:
