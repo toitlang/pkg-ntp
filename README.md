@@ -10,9 +10,11 @@ This package does not update the system time.
 
 ```
 import ntp
+import esp32
 
 main:
   result ::= ntp.synchronize
   if result:
     print "ntp: $result.adjustment ±$result.accuracy"
+    esp32.adjust_real_time_clock result.adjustment
 ```
