@@ -1,2 +1,5 @@
 name: ntp
 description: NTP (Network Time Protocol) client.
+
+environment:
+  sdk: ^2.0.0-alpha.144
