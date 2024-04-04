@@ -11,7 +11,7 @@ import esp32 show adjust_real_time_clock
 
 main:
   now := Time.now
-  if now < (Time.from_string "2022-01-10T00:00:00Z"):
+  if now < (Time.parse "2022-01-10T00:00:00Z"):
     result ::= ntp.synchronize
     if result:
       adjust_real_time_clock result.adjustment
