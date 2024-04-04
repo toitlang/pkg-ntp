@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
-import binary show BIG_ENDIAN
+import io show BIG_ENDIAN
 import net
 
 NTP_DEFAULT_SERVER_HOSTNAME /string   ::= "pool.ntp.org"
