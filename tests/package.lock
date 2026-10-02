@@ -1,0 +1,6 @@
+# Toit Lock File.
+prefixes:
+  ntp: ..
+packages:
+  ..:
+    path: ..
