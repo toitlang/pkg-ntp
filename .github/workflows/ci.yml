@@ -34,20 +34,10 @@ jobs:
       # The tests only depend on the local package, using the checked-in lock file.
       - name: Test with a local UDP server
         shell: bash
-        run: |
-          # Alpha.144's "toit run" wrapper fails before invoking the compiler.
-          if command -v toit.run >/dev/null 2>&1; then
-            toit.run tests/synchronize-test.toit
-          else
-            toit run tests/synchronize-test.toit
-          fi
+        run: toit run tests/synchronize-test.toit
       - name: Analyze library and examples
         shell: bash
         run: |
           for source in src/*.toit examples/*.toit; do
-            if command -v toit.run >/dev/null 2>&1; then
-              toit.run --analyze "$source"
-            else
-              toit analyze "$source"
-            fi
+            toit analyze "$source"
           done
