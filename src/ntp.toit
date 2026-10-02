@@ -4,6 +4,7 @@
 
 import io show BIG_ENDIAN
 import net
+import net.udp
 
 NTP_DEFAULT_SERVER_HOSTNAME /string   ::= "pool.ntp.org"
 NTP_DEFAULT_SERVER_PORT     /int      ::= 123
@@ -21,8 +22,9 @@ synchronize -> Result?
     --max_rtt/Duration=NTP_DEFAULT_MAX_RTT:
   outgoing ::= Packet_.outgoing
   effective_network := network ? network : net.open
-  socket := effective_network.udp_open
+  socket/udp.Socket? := null
   try:
+    socket = effective_network.udp_open
     ips := effective_network.resolve server
     socket.connect
       net.SocketAddress
@@ -40,6 +42,9 @@ synchronize -> Result?
       received ::= Time.monotonic_us
       now ::= Time.now
 
+      if not data or data.size < Packet_.DATAGRAM_SIZE:
+        return null
+
       round_trip ::= Duration --us=(received - transmit)
       incoming ::= Packet_.incoming data
       t1 ::= now - round_trip  // Validated through the marker.
@@ -52,8 +57,9 @@ synchronize -> Result?
           round_trip > max_rtt or t2 > t3:
         return null
 
-      // If we've received a Kiss-o'-Death packet, we can't use the result.
-      if incoming.stratum == 0:
+      // Reject Kiss-o'-Death replies, unsynchronized clocks, and missing timestamps.
+      if incoming.leap_indicator == LEAP_INDICATOR_UNSYNCHRONIZED_ or
+          incoming.stratum == 0 or incoming.stratum >= 16 or not incoming.has_timestamps:
         return null
 
       // Computed accuracy is the round trip time minus the (often neglible) processing time.
@@ -64,8 +70,10 @@ synchronize -> Result?
       return Result c d
 
   finally:
-    socket.close
-    if effective_network != network: effective_network.close
+    try:
+      if socket: socket.close
+    finally:
+      if effective_network != network: effective_network.close
   return null
 
 // --------------------------------------------------------------------------------------------------------
@@ -73,7 +81,7 @@ synchronize -> Result?
 LEAP_INDICATOR_NO_WARNING_ ::= 0
 LEAP_INDICATOR_PLUS_ONE_   ::= 1
 LEAP_INDICATOR_MINUS_ONE_  ::= 2
-LEAP_INDICATOR_RESERVED_   ::= 3
+LEAP_INDICATOR_UNSYNCHRONIZED_ ::= 3
 
 VERSION_                   ::= 4
 
@@ -107,6 +115,10 @@ class Packet_:
 
   // Local time at which the reply departed the service host for the client host.
   transmit_timestamp -> Time: return get_timestamp_ 40
+
+  // A zero timestamp denotes unknown or unsynchronized time.
+  has_timestamps -> bool:
+    return (BIG_ENDIAN.int64 bytes 32) != 0 and (BIG_ENDIAN.int64 bytes 40) != 0
 
   // Instead of passing an actual timestamp in the transmit field, we use a random
   // marker. The server side doesn't need to know anything about our perception
